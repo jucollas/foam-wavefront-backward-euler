@@ -1,0 +1,11 @@
+# Ignorar carpetas de compilación de Python
+__pycache__/
+*.py[cod]
+
+# Ignorar entorno virtual
+venv/
+
+# Otros archivos opcionales que podrías querer ignorar
+*.log
+.DS_Store
+.env

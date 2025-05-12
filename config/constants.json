@@ -1,0 +1,23 @@
+{
+  "phi": 0.25,
+  "Swc": 0.2,
+  "Sgr": 0.18,
+  "mu_w": 1e-3,
+  "mu_g": 2e-5,
+  "k1": 2e-11,
+  "k2": 1e-11,
+  "Sw_star": 0.37,
+  "A": 400,
+  "theta_s": 3.2e-4,
+  "u1": 2.93e-6,
+  "u2": 1.465e-6,
+  "L": 0.1,
+  "Nx": 200,
+  "Sw_inj": 0.372,
+  "Sw_ini": 0.72,
+  "diff_scale": 0.001,
+  "tmin": 0,
+  "tmax": 5000,
+  "time_steps_per_unit": 3,
+  "refinements": 10
+}
