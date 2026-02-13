@@ -1,51 +1,175 @@
 import matplotlib.pyplot as plt
 from functions.permeability import nD_eq
 import time
+import numpy as np
+import matplotlib.pyplot as plt
+from solver.velocity import smooth_speed, speed_metrics
 
-def plot_full_simulation(Sw1_all, Sw2_all, x, pause_time=0.1):
+def create_figure_report(t_vel, v1, v2, start_frac=0.6, smooth_w=51):
     """
-    Plots the full time evolution of saturation and foam strength profiles.
-
-    This function visualizes the evolution of water saturation in two layers
-    (`Sw1` and `Sw2`) and the corresponding foam model output (`nD1`, `nD2`)
-    over a spatial domain `x`. The plot updates in real time using interactive mode.
-
-    Args:
-        Sw1_all (ndarray): 2D array where each row corresponds to the saturation profile 
-            of layer 1 at a given time.
-        Sw2_all (ndarray): 2D array where each row corresponds to the saturation profile 
-            of layer 2 at a given time.
-        x (ndarray): 1D spatial coordinate array.
-        pause_time (float, optional): Time in seconds to pause between frames. 
-            Default is 0.1 seconds.
-
-    Returns:
-        None
+    t_vel debe tener longitud Nt-1 (misma que v1 y v2).
     """
-    plt.ion()  # Activate interactive mode
+    v1s = smooth_speed(v1, smooth_w)
+    v2s = smooth_speed(v2, smooth_w)
+
+    m1 = speed_metrics(v1s, start_frac=start_frac)
+    m2 = speed_metrics(v2s, start_frac=start_frac)
+
+    fig2, ax = plt.subplots(figsize=(10, 4))
+    ax.set_title("Reporte: velocidad del frente vs tiempo")
+    ax.set_xlabel("t [s]")
+    ax.set_ylabel("v [m/s]")
+    ax.grid(True)
+
+    # Curvas
+    l1_raw, = ax.plot(t_vel, v1, alpha=0.25, label="Sw1 v (raw)")
+    l2_raw, = ax.plot(t_vel, v2, alpha=0.25, label="Sw2 v (raw)")
+    l1_s,   = ax.plot(t_vel, v1s, label="Sw1 v (suave)")
+    l2_s,   = ax.plot(t_vel, v2s, label="Sw2 v (suave)")
+
+    # Promedios (régimen estable)
+    h1 = ax.axhline(m1["mean"], linestyle="--", label=f"Sw1 mean (steady)={m1['mean']:.3e}")
+    h2 = ax.axhline(m2["mean"], linestyle="--", label=f"Sw2 mean (steady)={m2['mean']:.3e}")
+
+    # Banda sombreada del régimen estable (desde start_frac)
+    t0 = t_vel[int(len(t_vel) * start_frac)] if len(t_vel) > 0 else 0.0
+    band = ax.axvspan(t0, t_vel[-1] if len(t_vel) else 1.0, alpha=0.12, label=f"Steady zone (from {int(start_frac*100)}%)")
+
+    # Texto resumen
+    txt = ax.text(
+        0.02, 0.98,
+        (f"Sw1: mean={m1['mean']:.3e}, std={m1['std']:.3e}, std/mean={m1['rel']:.3f}\n"
+         f"Sw2: mean={m2['mean']:.3e}, std={m2['std']:.3e}, std/mean={m2['rel']:.3f}"),
+        transform=ax.transAxes, va="top"
+    )
+
+    ax.legend(loc="best")
+    fig2.tight_layout()
+
+    # Devolvemos handles por si luego quieres actualizar
+    handles = {
+        "ax": ax, "txt": txt,
+        "l1_raw": l1_raw, "l2_raw": l2_raw,
+        "l1_s": l1_s, "l2_s": l2_s,
+        "h1": h1, "h2": h2,
+        "band": band
+    }
+    return fig2, handles
+
+def plot_simulation_and_report(Sw1_all, Sw2_all, x, vel_sw1, vel_sw2, params, stride=50, pause_time=0.05):
+    plt.ion()
+
+    # ---- Figura 2 (reporte) ----
+    # v tiene longitud Nt-1, entonces t_vel también:
+    cfg = params["cfg"]
+    dt = (cfg["tmax"] - cfg["tmin"]) / (Sw1_all.shape[0] - 1)
+    t_vel = np.arange(len(vel_sw1)) * dt
+    fig2, _ = create_figure_report(t_vel, vel_sw1, vel_sw2, start_frac=0.6, smooth_w=51)
+    fig2.show()
+
+    # ---- Figura 1 (simulación) ----
+
+    fig1, ax = plt.subplots(figsize=(10, 4))
+    line1, = ax.plot([], [], label='Sw1')
+    line2, = ax.plot([], [], label='Sw2')
+    line3, = ax.plot([], [], '--', label='nD1')
+    line4, = ax.plot([], [], '--', label='nD2')
+    ax.set_xlabel('x [m]')
+    ax.set_ylabel('Saturation')
+    ax.set_ylim(0, 1.2)
+    ax.set_xlim(x[0], x[-1])
+    ax.grid()
+    ax.legend()
+
+    vel_text = ax.text(0.02, 0.95, "", transform=ax.transAxes, va="top")
+
+    Nt = len(Sw1_all)
+    for t_index in range(0, Nt, stride):
+        Sw1 = Sw1_all[t_index]
+        Sw2 = Sw2_all[t_index]
+
+        line1.set_data(x, Sw1)
+        line2.set_data(x, Sw2)
+        line3.set_data(x, nD_eq(Sw1))
+        line4.set_data(x, nD_eq(Sw2))
+
+        t_real = t_index * dt
+        v1 = vel_sw1[t_index-1] if t_index > 0 and (t_index-1) < len(vel_sw1) else np.nan
+        v2 = vel_sw2[t_index-1] if t_index > 0 and (t_index-1) < len(vel_sw2) else np.nan
+
+        ax.set_title(f'Saturation profile at t = {t_real:.3f} s')
+        vel_text.set_text(f"v_front Sw1: {v1:.4e} m/s\nv_front Sw2: {v2:.4e} m/s")
+
+        fig1.canvas.draw()
+        fig1.canvas.flush_events()
+        time.sleep(pause_time)
+
+    plt.ioff()
+    plt.show()
+
+def plot_full_simulation(Sw1_all, Sw2_all, x, params, vel_sw1=None, vel_sw2=None, stride=50, pause_time=0.1):
+    """
+    Animación interactiva de Sw1/Sw2 + nD1/nD2 y muestra velocidad instantánea por frame.
+
+    vel_sw1, vel_sw2: arrays de longitud Nt-1 (típico de np.diff(pos)/dt)
+    dt: paso de tiempo real entre frames (en segundos)
+    stride: cada cuántos pasos de tiempo se dibuja un frame
+    """
+    cfg = params["cfg"]
+    dt = (cfg["tmax"] - cfg["tmin"]) / (Sw1_all.shape[0] - 1)
+    Nt = len(Sw1_all)
+
+    plt.ion()
     fig, ax = plt.subplots(figsize=(10, 4))
 
     line1, = ax.plot([], [], label='Sw1')
     line2, = ax.plot([], [], label='Sw2')
-    line3, = ax.plot([], [], '--', label='nD1', color='orange')
-    line4, = ax.plot([], [], '--', label='nD2', color='red')
+    line3, = ax.plot([], [], '--', label='nD1')
+    line4, = ax.plot([], [], '--', label='nD2')
 
     ax.set_xlabel('x [m]')
     ax.set_ylabel('Saturation')
     ax.set_ylim(0, 1.2)
     ax.grid()
     ax.legend()
+    ax.set_xlim(x[0], x[-1])
 
-    for t_index in range(0, len(Sw1_all), 50):
-        line1.set_data(x, Sw1_all[t_index])
-        line2.set_data(x, Sw2_all[t_index])
-        line3.set_data(x, nD_eq(Sw1_all[t_index]))
-        line4.set_data(x, nD_eq(Sw2_all[t_index]))
-        ax.set_title(f'Saturation profile at t = {t_index} s')
-        ax.set_xlim(x[0], x[-1])
+    # Texto tipo HUD en esquina superior izquierda
+    vel_text = ax.text(
+        0.02, 0.95, "", transform=ax.transAxes,
+        va="top"
+    )
+
+    for t_index in range(0, Nt, stride):
+        Sw1 = Sw1_all[t_index]
+        Sw2 = Sw2_all[t_index]
+
+        line1.set_data(x, Sw1)
+        line2.set_data(x, Sw2)
+        line3.set_data(x, nD_eq(Sw1))
+        line4.set_data(x, nD_eq(Sw2))
+
+        # Tiempo real (aprox)
+        t_real = t_index * dt
+
+        # Velocidad instantánea (v[k] es entre k y k+1)
+        v1 = np.nan
+        v2 = np.nan
+        if vel_sw1 is not None and t_index > 0 and (t_index - 1) < len(vel_sw1):
+            v1 = vel_sw1[t_index - 1]
+        if vel_sw2 is not None and t_index > 0 and (t_index - 1) < len(vel_sw2):
+            v2 = vel_sw2[t_index - 1]
+
+        ax.set_title(f'Saturation profile at t = {t_real:.3f} s')
+
+        vel_text.set_text(
+            f"v_front Sw1: {v1:.4e} m/s\n"
+            f"v_front Sw2: {v2:.4e} m/s"
+        )
+
         fig.canvas.draw()
         fig.canvas.flush_events()
         time.sleep(pause_time)
 
-    plt.ioff()  # Turn off interactive mode if no longer needed
+    plt.ioff()
     plt.show()
