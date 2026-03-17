@@ -3,12 +3,65 @@ from functions.permeability import nD_eq
 import time
 import numpy as np
 import matplotlib.pyplot as plt
-from solver.velocity import smooth_speed, speed_metrics
+from solver.velocity import smooth_speed, speed_metrics, analyze_constant_velocity
 
-def create_figure_report(t_vel, v1, v2, start_frac=0.6, smooth_w=51):
+
+def create_figure_report(t_vel, v1, v2, start_frac=0.9):
     """
     t_vel debe tener longitud Nt-1 (misma que v1 y v2).
+    Calcula mean/std/std-mean usando analyze_constant_velocity (misma lógica que tu análisis).
     """
+    index_start = int(len(v1) * start_frac)
+
+    ignore = -50
+    t_vel = t_vel[:ignore]
+    v1 = v1[:ignore]
+    v2 = v2[:ignore]
+
+    fig2, ax = plt.subplots(figsize=(10, 4))
+    ax.set_title("front speed vs time")
+    ax.set_xlabel("t [s]")
+    ax.set_ylabel("v [m/s]")
+    ax.grid(True)
+
+    l1_s,   = ax.plot(t_vel, v1, label="Sw1 v (smooth)")
+    l2_s,   = ax.plot(t_vel, v2, label="Sw2 v (smooth)")
+
+
+    mean_v1 = np.mean(v1[index_start:])
+    mean_v2 = np.mean(v2[index_start:])
+
+    h1 = ax.axhline(mean_v1, linestyle="--", label=f"Sw1 mean (steady)={mean_v1:.3e} v[m/s]")
+    h2 = ax.axhline(mean_v2, linestyle="--", label=f"Sw2 mean (steady)={mean_v2:.3e} v[m/s]")
+
+    # Banda sombreada del régimen estable (desde start_frac)
+    if len(t_vel) > 0:
+        t0 = t_vel[int(len(t_vel) * start_frac)]
+        t1 = t_vel[-1]
+    else:
+        t0, t1 = 0.0, 1.0
+    band = ax.axvspan(t0, t1, alpha=0.12, label=f"Steady zone (from {int(start_frac*100)}%)")
+
+    ax.legend(loc="best")
+    fig2.tight_layout()
+
+    handles = {
+        "ax": ax,
+        "l1_s": l1_s, "l2_s": l2_s,
+        "h1": h1, "h2": h2,
+        "band": band,
+        # por si quieres usarlo luego fuera
+        "metrics": {
+            "sw1": {"mean": mean_v1},
+            "sw2": {"mean": mean_v2},
+        }
+    }
+    return fig2, handles
+
+"""def create_figure_report(t_vel, v1, v2, start_frac=0.6, smooth_w=51):
+    
+    t_vel debe tener longitud Nt-1 (misma que v1 y v2).
+    
     v1s = smooth_speed(v1, smooth_w)
     v2s = smooth_speed(v2, smooth_w)
 
@@ -54,20 +107,15 @@ def create_figure_report(t_vel, v1, v2, start_frac=0.6, smooth_w=51):
         "h1": h1, "h2": h2,
         "band": band
     }
-    return fig2, handles
+    return fig2, handles"""
 
-def plot_simulation_and_report(Sw1_all, Sw2_all, x, vel_sw1, vel_sw2, params, stride=50, pause_time=0.05):
+def plot_simulation_and_report(Sw1_all, Sw2_all, x, t_vel, vel_sw1, vel_sw2, dt, stride=50, pause_time=0.05):
     plt.ion()
 
-    # ---- Figura 2 (reporte) ----
-    # v tiene longitud Nt-1, entonces t_vel también:
-    cfg = params["cfg"]
-    dt = (cfg["tmax"] - cfg["tmin"]) / (Sw1_all.shape[0] - 1)
-    t_vel = np.arange(len(vel_sw1)) * dt
-    fig2, _ = create_figure_report(t_vel, vel_sw1, vel_sw2, start_frac=0.6, smooth_w=51)
+    fig2, _ = create_figure_report(t_vel, vel_sw1, vel_sw2, start_frac=0.4)
     fig2.show()
 
-    # ---- Figura 1 (simulación) ----
+    # ---- Figura 1 (simulación) ----p
 
     fig1, ax = plt.subplots(figsize=(10, 4))
     line1, = ax.plot([], [], label='Sw1')

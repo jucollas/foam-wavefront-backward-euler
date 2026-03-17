@@ -42,7 +42,7 @@ def steady_slice(arr, start_frac=0.3):
     k0 = int(len(arr) * start_frac)
     return arr[k0:]
 
-def analyze_constant_velocity(vel, tol=0.28, start_frac=0.50):
+def analyze_constant_velocity(vel, tol=0.28, start_frac=0.40):
     v = steady_slice(vel[np.isfinite(vel)], start_frac)
     mean_v = np.mean(v)
     std_v  = np.std(v)
